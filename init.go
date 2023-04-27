@@ -1,9 +1,8 @@
 package gpt3encoder
 
 import (
+	"fmt"
 	"sync"
-
-	log "github.com/sirupsen/logrus"
 )
 
 type encoderConfig struct {
@@ -60,15 +59,15 @@ var configMapping = map[string]*encoderConfig{
 		pattern:  `/(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+/`,
 	},
 	"p50k_base": &encoderConfig{
-		filename: "p50k_base.tiktoken",
+		filename: "https://openaipublic.blob.core.windows.net/encodings/p50k_base.tiktoken",
 		pattern:  `/'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+/`,
 	},
 	"r50k_base": &encoderConfig{
-		filename: "r50k_base.tiktoken",
+		filename: "https://openaipublic.blob.core.windows.net/encodings/r50k_base.tiktoken",
 		pattern:  `/'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+/`,
 	},
 	"p50k_edit": &encoderConfig{
-		filename: "p50k_edit.tiktoken",
+		filename: "https://openaipublic.blob.core.windows.net/encodings/p50k_base.tiktoken",
 		pattern:  `/'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+/`,
 	},
 }
@@ -76,34 +75,37 @@ var configMapping = map[string]*encoderConfig{
 var lock sync.RWMutex
 var encoderMapping = make(map[string]*Encoder)
 
-func NewEncoder(model string) *Encoder {
+func NewEncoder(model string) (enc *Encoder, err error) {
 	underlying := modelMapping[model]
 	if len(underlying) == 0 {
-		return nil
+		err = fmt.Errorf("gpt3encoder: invalid model name: %v", model)
+		return
 	}
 
+	var ok bool
 	lock.RLock()
-	enc, ok := encoderMapping[underlying]
+	enc, ok = encoderMapping[underlying]
 	lock.RUnlock()
 	if ok {
-		return enc
+		return
 	}
 
 	lock.Lock()
 	defer lock.Unlock()
 	enc, ok = encoderMapping[underlying]
 	if ok {
-		return enc
+		return
 	}
 
 	config, ok := configMapping[underlying]
 	if !ok {
-		return nil
+		err = fmt.Errorf("gpt3encoder: not found config for %s", underlying)
+		return
 	}
-	enc, err := NewEncoderFromConfig(config)
+	enc, err = NewEncoderFromConfig(config)
 	if err != nil {
-		log.Errorf("new encoder for %s %s failed: %v", model, underlying, err)
+		return
 	}
 	encoderMapping[underlying] = enc
-	return enc
+	return
 }
